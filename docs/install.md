@@ -29,12 +29,13 @@ Installed files:
 
 ```text
 /opt/cardputer-zero-shell/bin/zero-shell
-/opt/cardputer-zero-shell/scripts/*
-/usr/share/APPLaunch/applications/*.desktop
-/usr/share/APPLaunch/share/images/*
+/usr/share/APPLaunch/applications/
+/usr/share/APPLaunch/share/images/
 ```
 
-Image assets are installed only when local `main/assets/images` exists.
+The APPLaunch directories are created for compatibility. ZeroShell does not
+install default `.desktop` files or app icons. Applications provide their own
+entries through their package install.
 
 ## CMake Fallback
 
@@ -70,6 +71,8 @@ sudo ./uninstall.sh
 ```
 
 This removes the binary, default scripts and default `.desktop` files installed by this repo.
+For compatibility with older installs, it also removes the old fake tool
+entries that previous ZeroShell builds installed.
 
 It does not remove:
 
@@ -87,21 +90,16 @@ ls -l /opt/cardputer-zero-shell/bin/zero-shell
 file /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
-Check default apps:
+Check application entries:
 
 ```sh
 find /usr/share/APPLaunch/applications -maxdepth 1 -type f -name '*.desktop' -printf '%f\n' | sort
 ```
 
-Expected default entries:
+Expected:
 
 ```text
-app-store.desktop
-files.desktop
-hdmi.desktop
-settings.desktop
-system-monitor.desktop
-terminal.desktop
+entries installed by real application packages, such as lofibox.desktop
 ```
 
 Check that it refuses root:
@@ -141,4 +139,3 @@ ssh pi@192.168.50.35 'cd /tmp/cardputer-zero-shell-src && sudo ./install.sh'
 ```
 
 Do not copy an x86 build product to the Pi. Build on the target device or cross-compile deliberately.
-

@@ -6,9 +6,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_package(PNG REQUIRED)
+
 add_executable(zero-shell
     main/src/app_catalog.cpp
     main/src/framebuffer_canvas.cpp
+    main/src/image.cpp
     main/src/input_device.cpp
     main/src/main.cpp
     main/src/process_runner.cpp
@@ -25,6 +28,6 @@ target_compile_options(zero-shell PRIVATE
     -Wpedantic
 )
 
-target_link_libraries(zero-shell PRIVATE util)
+target_link_libraries(zero-shell PRIVATE util PNG::PNG)
 
 install(TARGETS zero-shell RUNTIME DESTINATION /opt/cardputer-zero-shell/bin)

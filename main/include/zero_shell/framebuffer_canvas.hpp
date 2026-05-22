@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "zero_shell/image.hpp"
+
 namespace zero_shell {
 
 struct Color {
@@ -34,10 +36,12 @@ public:
     void draw_text(int x, int y, const std::string &text, Color color, int scale = 1);
     void draw_text_centered(int cx, int y, const std::string &text, Color color, int scale = 1);
     void draw_icon_tile(int cx, int cy, int size, Color fill, Color border, const std::string &label);
+    void draw_image_fit(const Image &image, int x, int y, int w, int h);
     void present();
 
 private:
     void put_pixel(int x, int y, Color color);
+    void blend_pixel(int x, int y, Color color, uint8_t alpha);
     void put_char(int x, int y, char ch, Color color, int scale);
     uint32_t pack_color(Color color) const;
 
@@ -52,4 +56,3 @@ private:
 std::string find_internal_framebuffer();
 
 } // namespace zero_shell
-

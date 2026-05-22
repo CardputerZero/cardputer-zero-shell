@@ -66,16 +66,13 @@ timeout 3s /usr/local/bin/cardputer-zero-session
 
 This should enter the shell loop and then be killed by `timeout`.
 
-## Adding A Default Tool
+## Adding An Application Entry
 
-Do not add fixed tools directly to C++ carousel setup.
+Do not add fixed tools or fake applications to this repository.
 
-Instead:
-
-1. Add a `.desktop` file under `applications/`.
-2. Add a fallback script under `scripts/` if needed.
-3. Ensure `install.sh` installs it.
-4. Document it if it changes user expectations.
+Applications should ship their own APPLaunch-compatible `.desktop` files and
+icons through their package install. ZeroShell's job is to scan and launch
+those entries, not to define system tools.
 
 ## Adding A System Action
 
@@ -84,13 +81,13 @@ Do not call arbitrary privileged commands from ZeroShell.
 Preferred path:
 
 1. Add a restricted action to `zero-helper` in `cardputer-zero-os`.
-2. Allow it through the OS sudoers policy.
-3. Call only that allowed helper action from ZeroShell.
+2. Allow it through the OS polkit policy.
+3. Call only that allowed helper action from ZeroShell without `sudo`.
 
 Example:
 
 ```sh
-sudo /usr/local/sbin/zero-helper display mirror
+/usr/local/sbin/zero-helper display mirror
 ```
 
 Avoid:
@@ -121,4 +118,3 @@ If replacing framebuffer UI with LVGL:
 - Prefer explicit runtime contracts over implicit historical assumptions.
 - Avoid hard-coded user paths such as `/home/pi` unless they are development examples.
 - Treat `/usr/share/APPLaunch` as a compatibility contract, not as proof that all old APPLaunch behavior belongs here.
-

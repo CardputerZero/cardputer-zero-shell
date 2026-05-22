@@ -25,10 +25,10 @@ ZeroShell 不显示在：
 
 ## Home Screen
 
-MVP home screen 是一个五槽位 carousel：
+MVP home screen 是一个三卡片 carousel：
 
 ```text
-left outer / left / center / right / right outer
+left / center / right
 ```
 
 中心槽位是当前选中的应用。按 `Enter` 会启动中心应用。
@@ -51,6 +51,7 @@ MVP controls:
 | `Left` | Select previous app |
 | `Right` | Select next app |
 | `Enter` | Open selected app |
+| `Tab` | Open running task menu |
 | `R` | Reload `/usr/share/APPLaunch/applications` |
 | `Esc` | Open power menu |
 | `Q` | Quit shell, mainly for development/recovery |
@@ -69,11 +70,11 @@ Example:
 
 ```ini
 [Desktop Entry]
-Name=Terminal
-TryExec=bash
-Exec=bash
-Terminal=true
-Icon=share/images/cli_100.png
+Name=LoFiBox
+TryExec=/usr/lib/lofibox/lofibox-applaunch
+Exec=/usr/lib/lofibox/lofibox-applaunch
+Terminal=false
+Icon=share/images/lofibox.png
 Sysplause=false
 ```
 
@@ -90,6 +91,9 @@ Terminal=true
 ```
 
 ZeroShell opens an internal framebuffer PTY terminal page and runs the command there.
+Pressing `Esc` on a terminal page minimizes it back to the ZeroShell home screen
+instead of killing it. A minimized terminal app stays in the running task list
+and its launcher icon shows a `RUN` badge.
 
 Examples:
 
@@ -100,6 +104,24 @@ Examples:
 - small command-line tools
 
 The MVP terminal is intentionally minimal. It is enough for basic interaction, but it is not yet a full terminal emulator for every advanced curses application.
+
+## Running Tasks
+
+`Terminal=true` apps can be minimized and restored.
+
+Controls:
+
+| Key | Action |
+| --- | --- |
+| `Esc` inside terminal | Minimize terminal task |
+| `Tab` on home | Open task menu |
+| `Up` / `Down` | Select task |
+| `Enter` | Restore selected task |
+| `Esc` / `Tab` | Close task menu |
+
+Apps with a running minimized terminal task show a `RUN` badge on their launcher
+card. `Terminal=false` apps still run as foreground blocking apps and do not
+enter the task list in the MVP.
 
 ## External Apps
 
@@ -148,10 +170,12 @@ MVP menu items:
 Privileged power actions are routed through:
 
 ```text
-sudo /usr/local/sbin/zero-helper
+/usr/local/sbin/zero-helper
 ```
 
-ZeroShell does not directly run `sudo reboot`, `sudo shutdown`, arbitrary `systemctl`, or arbitrary shell commands for system actions.
+`zero-helper` asks `cardputer-zero-os`/polkit for authorization when required.
+ZeroShell does not directly run `sudo reboot`, `sudo shutdown`, arbitrary
+`systemctl`, or arbitrary shell commands for system actions.
 
 ## HDMI And Other Screens
 

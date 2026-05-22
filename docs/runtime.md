@@ -110,8 +110,11 @@ ZeroShell must not launch user applications as root.
 If an application requires privileged actions, that app should use the restricted helper contract provided by `cardputer-zero-os`, usually:
 
 ```text
-sudo /usr/local/sbin/zero-helper <allowed-action>
+/usr/local/sbin/zero-helper <allowed-action>
 ```
+
+`zero-helper` owns the `pkexec`/polkit transition. ZeroShell and child apps stay
+normal user processes and should not wrap helper calls in `sudo`.
 
 ## Session Recovery
 
@@ -128,4 +131,3 @@ ZEROSHELL_APPLICATIONS_DIR=./applications ./build/zero-shell
 ```
 
 Do not use `sudo` for normal shell execution.
-

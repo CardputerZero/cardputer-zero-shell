@@ -106,6 +106,7 @@ bool parse_desktop_file(const std::filesystem::path &path, AppEntry &entry)
     entry.exec = values["Exec"];
     entry.icon = values["Icon"];
     entry.try_exec = values["TryExec"];
+    entry.short_name = values["X-Zero-ShortName"];
     entry.terminal = parse_bool(values["Terminal"], false);
     entry.sysplause = parse_bool(values["Sysplause"], true);
 
@@ -200,4 +201,3 @@ bool command_available(const std::string &command)
 }
 
 } // namespace zero_shell
-

@@ -27,6 +27,14 @@
 - application runner
 - user-session UI surface
 
+## Current UI
+
+![Cardputer Zero Shell home](docs/assets/zero-shell-current-home-320x170.png)
+
+This screenshot is the current runtime state on the test device. It shows only
+the real APPLaunch entries installed on that system; ZeroShell does not bundle
+placeholder applications to fill the carousel.
+
 ## System Boundary
 
 系统边界必须保持清楚：
@@ -115,11 +123,11 @@ Supported desktop entry subset:
 
 ```ini
 [Desktop Entry]
-Name=Terminal
-TryExec=bash
-Exec=bash
-Terminal=true
-Icon=share/images/cli_100.png
+Name=LoFiBox
+TryExec=/usr/lib/lofibox/lofibox-applaunch
+Exec=/usr/lib/lofibox/lofibox-applaunch
+Terminal=false
+Icon=share/images/lofibox.png
 Sysplause=false
 ```
 
@@ -151,6 +159,7 @@ Controls in the MVP:
 
 - `Left` / `Right`: select app
 - `Enter`: open selected app
+- `Tab`: open the running task menu
 - `R`: reload application directory
 - `Esc`: power menu
 - `Q`: quit shell, mainly for development and recovery
@@ -177,9 +186,7 @@ sudo ./install.sh
 This installs:
 
 - `/opt/cardputer-zero-shell/bin/zero-shell`
-- `/opt/cardputer-zero-shell/scripts/*`
-- `/usr/share/APPLaunch/applications/*.desktop`
-- `/usr/share/APPLaunch/share/images/*` when local assets exist
+- APPLaunch data directories when they do not already exist
 
 It does not configure:
 
@@ -190,6 +197,11 @@ It does not configure:
 - getty
 - udev
 - autologin
+- application entries
+
+Applications must be installed by their own packages into
+`/usr/share/APPLaunch/applications`. ZeroShell does not ship fake or default
+applications.
 
 More detail: [docs/install.md](docs/install.md)
 
@@ -201,8 +213,6 @@ cardputer-zero-shell/
 ├─ CMakeLists.txt
 ├─ install.sh
 ├─ uninstall.sh
-├─ applications/
-├─ scripts/
 ├─ main/
 │  ├─ include/zero_shell/
 │  └─ src/
@@ -210,4 +220,3 @@ cardputer-zero-shell/
 ```
 
 Implementation specification: [docs/spec.md](docs/spec.md)
-

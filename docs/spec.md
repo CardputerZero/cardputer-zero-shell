@@ -8,9 +8,10 @@ MVP scope:
 
 - framebuffer GUI launcher
 - APPLaunch-compatible desktop scanner
-- five-slot carousel
+- three-card carousel
 - keyboard navigation
 - internal PTY terminal page for `Terminal=true`
+- running task list for minimized `Terminal=true` apps
 - blocking app runner for `Terminal=false`
 - status bar
 - app reload
@@ -115,13 +116,15 @@ Responsible for:
 - app carousel state,
 - status refresh,
 - app launching,
-- power menu.
+- power menu,
+- generic label formatting from `.desktop` fields.
 
 Not responsible for:
 
 - authentication,
 - user session creation,
-- OS recovery.
+- OS recovery,
+- knowing app-specific business names or aliases.
 
 ### PtyTerminal
 
@@ -130,7 +133,8 @@ Responsible for:
 - creating a PTY with `forkpty`,
 - running terminal commands,
 - rendering simple terminal output,
-- forwarding basic keyboard input.
+- forwarding basic keyboard input,
+- minimizing and restoring terminal sessions owned by ZeroShell.
 
 Not responsible for:
 
@@ -179,7 +183,7 @@ Home layout:
 
 ```text
 top status bar
-five-slot carousel
+three-card carousel
 mode/status hint
 bottom control hint
 ```
@@ -187,7 +191,7 @@ bottom control hint
 Carousel:
 
 ```text
-left outer / left / center / right / right outer
+left / center / right
 ```
 
 Center item is selected.
@@ -201,9 +205,19 @@ Home:
 | `Left` | Previous app |
 | `Right` | Next app |
 | `Enter` | Launch app |
+| `Tab` | Task menu |
 | `R` | Reload apps |
 | `Esc` | Power menu |
 | `Q` | Quit shell |
+
+Task menu:
+
+| Key | Behavior |
+| --- | --- |
+| `Up` | Previous task |
+| `Down` / `Left` / `Right` | Next task |
+| `Enter` | Restore selected task |
+| `Tab` / `Esc` | Close task menu |
 
 Power menu:
 
@@ -222,7 +236,11 @@ Terminal page:
 | `Enter` | `\r` |
 | `Backspace` | DEL |
 | arrow keys | ANSI cursor sequences |
-| `Esc` | Terminate command and return |
+| `Esc` | Minimize terminal task and return home |
+
+Launcher cards for apps with a minimized running terminal task show a `RUN`
+badge. `Terminal=false` apps remain foreground blocking processes in the MVP and
+do not enter the task list.
 
 ## Security And Privilege Specification
 
@@ -258,6 +276,7 @@ MVP-compatible fields:
 - `Terminal`
 - `TryExec`
 - `Sysplause`
+- `X-Zero-ShortName`
 
 Future UI backends should preserve this application contract.
 
@@ -270,4 +289,3 @@ Reason:
 旧 APPLaunch 的 LVGL/SConstruct implementation is heavily coupled to SDK build logic, built-in pages, AppStore assumptions, RadioLib, fixed tools and historical paths. Importing it wholesale would reintroduce the boundary drift this repo is meant to remove.
 
 The design keeps the application contract stable so that a future LVGL backend can replace the framebuffer UI without changing `.desktop` semantics.
-

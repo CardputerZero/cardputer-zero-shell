@@ -71,17 +71,18 @@ The shell must already be installed before the session can enter the Zero deskto
 ZeroShell may call restricted helper actions:
 
 ```sh
-sudo /usr/local/sbin/zero-helper reboot
-sudo /usr/local/sbin/zero-helper shutdown
-sudo /usr/local/sbin/zero-helper display internal
-sudo /usr/local/sbin/zero-helper display mirror
-sudo /usr/local/sbin/zero-helper display extended
-sudo /usr/local/sbin/zero-helper network-restart
+/usr/local/sbin/zero-helper reboot
+/usr/local/sbin/zero-helper shutdown
+/usr/local/sbin/zero-helper display internal
+/usr/local/sbin/zero-helper display mirror
+/usr/local/sbin/zero-helper display extended
+/usr/local/sbin/zero-helper network-restart
 ```
 
-The exact allowed helper commands are defined by `cardputer-zero-os`.
+The exact allowed helper commands are defined by `cardputer-zero-os`. The helper
+enters `pkexec`/polkit when root authorization is required.
 
-ZeroShell should not assume arbitrary sudo rights.
+ZeroShell should not assume arbitrary sudo rights or invoke `sudo` itself.
 
 ## HDMI Rule
 
@@ -101,4 +102,3 @@ If HDMI is plugged in, the base OS / LightDM path can continue to exist independ
 If ZeroShell fails or is missing, recovery belongs to `cardputer-zero-os`.
 
 The shell should make failures visible, but it should not become a second login manager or recovery OS.
-

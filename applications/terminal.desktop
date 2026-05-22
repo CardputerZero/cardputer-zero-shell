@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Terminal
-TryExec=bash
-Exec=bash
-Terminal=true
-Icon=share/images/cli_100.png
-Sysplause=false
-

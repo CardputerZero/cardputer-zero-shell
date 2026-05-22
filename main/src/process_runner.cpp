@@ -59,7 +59,7 @@ int run_terminal_command(const std::string &command, bool sysplause)
 
 int run_zero_helper(const std::string &arguments)
 {
-    return run_shell_command("sudo /usr/local/sbin/zero-helper " + arguments);
+    return run_shell_command("/usr/local/sbin/zero-helper " + arguments);
 }
 
 } // namespace zero_shell

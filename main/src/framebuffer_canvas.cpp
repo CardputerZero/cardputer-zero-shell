@@ -31,6 +31,8 @@ constexpr Glyph kGlyphs[] = {
     {'.', {0x00,0x00,0x00,0x00,0x00,0x04,0x00}},
     {'/', {0x01,0x02,0x04,0x08,0x10,0x00,0x00}},
     {':', {0x00,0x04,0x00,0x00,0x04,0x00,0x00}},
+    {'<', {0x02,0x04,0x08,0x10,0x08,0x04,0x02}},
+    {'>', {0x08,0x04,0x02,0x01,0x02,0x04,0x08}},
     {'0', {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}},
     {'1', {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}},
     {'2', {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}},
@@ -240,6 +242,33 @@ void FramebufferCanvas::draw_icon_tile(int cx, int cy, int size, Color fill, Col
     draw_text_centered(cx, cy - 7, initials, {245, 245, 245}, size >= 58 ? 2 : 1);
 }
 
+void FramebufferCanvas::draw_image_fit(const Image &image, int x, int y, int w, int h)
+{
+    if (image.empty() || w <= 0 || h <= 0) {
+        return;
+    }
+
+    double scale = std::min(static_cast<double>(w) / static_cast<double>(image.width),
+                            static_cast<double>(h) / static_cast<double>(image.height));
+    int dest_w = std::max(1, static_cast<int>(image.width * scale));
+    int dest_h = std::max(1, static_cast<int>(image.height * scale));
+    int dest_x = x + (w - dest_w) / 2;
+    int dest_y = y + (h - dest_h) / 2;
+
+    for (int py = 0; py < dest_h; ++py) {
+        int sy = std::clamp(static_cast<int>((static_cast<long long>(py) * image.height) / dest_h),
+                            0, image.height - 1);
+        for (int px = 0; px < dest_w; ++px) {
+            int sx = std::clamp(static_cast<int>((static_cast<long long>(px) * image.width) / dest_w),
+                                0, image.width - 1);
+            size_t offset = (static_cast<size_t>(sy) * static_cast<size_t>(image.width) +
+                             static_cast<size_t>(sx)) * 4;
+            Color color{image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2]};
+            blend_pixel(dest_x + px, dest_y + py, color, image.rgba[offset + 3]);
+        }
+    }
+}
+
 void FramebufferCanvas::present()
 {
     if (fd_ < 0 || buffer_.empty()) {
@@ -272,7 +301,7 @@ void FramebufferCanvas::put_pixel(int x, int y, Color color)
 
     if (bits_per_pixel_ == 16) {
         uint16_t value = static_cast<uint16_t>(((color.r >> 3) << 11) |
-                                               ((color.g >> 5) << 5) |
+                                               ((color.g >> 2) << 5) |
                                                (color.b >> 3));
         ptr[0] = static_cast<uint8_t>(value & 0xFF);
         ptr[1] = static_cast<uint8_t>((value >> 8) & 0xFF);
@@ -285,6 +314,49 @@ void FramebufferCanvas::put_pixel(int x, int y, Color color)
         ptr[1] = color.g;
         ptr[2] = color.r;
         ptr[3] = 0xFF;
+    }
+}
+
+void FramebufferCanvas::blend_pixel(int x, int y, Color color, uint8_t alpha)
+{
+    if (alpha == 0) {
+        return;
+    }
+    if (alpha == 255) {
+        put_pixel(x, y, color);
+        return;
+    }
+    if (x < 0 || y < 0 || x >= width_ || y >= height_ || buffer_.empty()) {
+        return;
+    }
+
+    uint8_t *ptr = buffer_.data() + static_cast<size_t>(y) * stride_ +
+                   static_cast<size_t>(x) * (bits_per_pixel_ / 8);
+    auto blend = [alpha](uint8_t fg, uint8_t bg) {
+        return static_cast<uint8_t>((static_cast<int>(fg) * alpha +
+                                     static_cast<int>(bg) * (255 - alpha)) / 255);
+    };
+
+    if (bits_per_pixel_ == 16) {
+        uint16_t bg = static_cast<uint16_t>(ptr[0] | (ptr[1] << 8));
+        Color bg_color{
+            static_cast<uint8_t>((((bg >> 11) & 0x1F) * 255) / 31),
+            static_cast<uint8_t>((((bg >> 5) & 0x3F) * 255) / 63),
+            static_cast<uint8_t>(((bg & 0x1F) * 255) / 31),
+        };
+        put_pixel(x, y, {blend(color.r, bg_color.r),
+                         blend(color.g, bg_color.g),
+                         blend(color.b, bg_color.b)});
+    } else {
+        uint8_t bg_b = ptr[0];
+        uint8_t bg_g = ptr[1];
+        uint8_t bg_r = ptr[2];
+        ptr[0] = blend(color.b, bg_b);
+        ptr[1] = blend(color.g, bg_g);
+        ptr[2] = blend(color.r, bg_r);
+        if (bits_per_pixel_ == 32) {
+            ptr[3] = 0xFF;
+        }
     }
 }
 

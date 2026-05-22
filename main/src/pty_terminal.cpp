@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace zero_shell {
@@ -125,7 +126,7 @@ void render_terminal(FramebufferCanvas &canvas, const TerminalBuffer &buffer, co
     canvas.clear(kBg);
     canvas.fill_rect(0, 0, canvas.width(), 16, {8, 14, 10});
     canvas.draw_text(4, 4, title.empty() ? "Terminal" : title, kFg, 1);
-    canvas.draw_text(canvas.width() - 58, 4, "ESC back", kDim, 1);
+    canvas.draw_text(canvas.width() - 52, 4, "ESC min", kDim, 1);
 
     for (int row = 0; row < buffer.rows(); ++row) {
         canvas.draw_text(2, 20 + row * kCharH, buffer.line(row), kFg, 1);
@@ -161,43 +162,27 @@ std::string key_to_terminal_sequence(const KeyEvent &event)
 
 } // namespace
 
-int run_terminal_page(FramebufferCanvas &canvas,
-                      InputDevice &input,
-                      const std::string &command,
-                      bool sysplause)
-{
-    const int cols = std::max(20, canvas.width() / kCharW);
-    const int rows = std::max(8, (canvas.height() - 22) / kCharH);
-    TerminalBuffer buffer(cols, rows);
-
-    int master = -1;
-    winsize ws{};
-    ws.ws_col = static_cast<unsigned short>(cols);
-    ws.ws_row = static_cast<unsigned short>(rows);
-    ws.ws_xpixel = static_cast<unsigned short>(canvas.width());
-    ws.ws_ypixel = static_cast<unsigned short>(canvas.height());
-
-    pid_t pid = forkpty(&master, nullptr, nullptr, &ws);
-    if (pid < 0) {
-        buffer.put('E'); buffer.put('r'); buffer.put('r'); buffer.put('o'); buffer.put('r');
-        render_terminal(canvas, buffer, "Terminal");
-        return -1;
+struct TerminalSession::Impl {
+    Impl(FramebufferCanvas &canvas_ref,
+         InputDevice &input_ref,
+         std::string command_value,
+         bool sysplause_value)
+        : canvas(canvas_ref),
+          input(input_ref),
+          command(std::move(command_value)),
+          sysplause(sysplause_value),
+          cols(std::max(20, canvas.width() / kCharW)),
+          rows(std::max(8, (canvas.height() - 22) / kCharH)),
+          buffer(cols, rows)
+    {
     }
 
-    if (pid == 0) {
-        setenv("TERM", "vt100", 1);
-        execlp("/bin/sh", "sh", "-lc", command.c_str(), static_cast<char *>(nullptr));
-        _exit(127);
-    }
+    bool read_pending()
+    {
+        if (master < 0) {
+            return false;
+        }
 
-    fcntl(master, F_SETFL, fcntl(master, F_GETFL, 0) | O_NONBLOCK);
-    bool active = true;
-    int exit_code = -1;
-    int status = 0;
-
-    render_terminal(canvas, buffer, command);
-
-    while (active) {
         char data[512];
         bool changed = false;
         while (true) {
@@ -211,54 +196,184 @@ int run_terminal_page(FramebufferCanvas &canvas,
                 break;
             }
         }
+        return changed;
+    }
 
-        pid_t rc = waitpid(pid, &status, WNOHANG);
-        if (rc == pid) {
-            if (WIFEXITED(status)) {
-                exit_code = WEXITSTATUS(status);
-            } else if (WIFSIGNALED(status)) {
-                exit_code = 128 + WTERMSIG(status);
-            }
-            active = false;
-            changed = true;
+    bool reap_if_done()
+    {
+        if (pid <= 0 || !active) {
+            return false;
         }
 
-        KeyEvent event = input.poll_event(std::chrono::milliseconds(30));
+        int status = 0;
+        pid_t rc = waitpid(pid, &status, WNOHANG);
+        if (rc != pid) {
+            return false;
+        }
+
+        if (WIFEXITED(status)) {
+            last_exit_code = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            last_exit_code = 128 + WTERMSIG(status);
+        }
+        active = false;
+        pid = -1;
+        return true;
+    }
+
+    FramebufferCanvas &canvas;
+    InputDevice &input;
+    std::string command;
+    bool sysplause = false;
+    int cols = 0;
+    int rows = 0;
+    TerminalBuffer buffer;
+    int master = -1;
+    pid_t pid = -1;
+    bool active = false;
+    int last_exit_code = -1;
+};
+
+TerminalSession::TerminalSession(FramebufferCanvas &canvas,
+                                 InputDevice &input,
+                                 std::string command,
+                                 bool sysplause)
+    : impl_(std::make_unique<Impl>(canvas, input, std::move(command), sysplause))
+{
+}
+
+TerminalSession::~TerminalSession()
+{
+    if (!impl_) {
+        return;
+    }
+    if (impl_->pid > 0 && impl_->active) {
+        kill(impl_->pid, SIGTERM);
+        waitpid(impl_->pid, nullptr, 0);
+    }
+    if (impl_->master >= 0) {
+        close(impl_->master);
+    }
+}
+
+bool TerminalSession::start()
+{
+    if (!impl_ || impl_->active || impl_->pid > 0) {
+        return false;
+    }
+
+    winsize ws{};
+    ws.ws_col = static_cast<unsigned short>(impl_->cols);
+    ws.ws_row = static_cast<unsigned short>(impl_->rows);
+    ws.ws_xpixel = static_cast<unsigned short>(impl_->canvas.width());
+    ws.ws_ypixel = static_cast<unsigned short>(impl_->canvas.height());
+
+    pid_t pid = forkpty(&impl_->master, nullptr, nullptr, &ws);
+    if (pid < 0) {
+        impl_->buffer.put('E'); impl_->buffer.put('r'); impl_->buffer.put('r');
+        impl_->buffer.put('o'); impl_->buffer.put('r');
+        render_terminal(impl_->canvas, impl_->buffer, "Terminal");
+        return false;
+    }
+
+    if (pid == 0) {
+        setenv("TERM", "vt100", 1);
+        execlp("/bin/sh", "sh", "-lc", impl_->command.c_str(), static_cast<char *>(nullptr));
+        _exit(127);
+    }
+
+    impl_->pid = pid;
+    impl_->active = true;
+    impl_->last_exit_code = -1;
+    fcntl(impl_->master, F_SETFL, fcntl(impl_->master, F_GETFL, 0) | O_NONBLOCK);
+    return true;
+}
+
+TerminalPageResult TerminalSession::run_foreground()
+{
+    if (!impl_ || !impl_->active) {
+        return TerminalPageResult::Exited;
+    }
+
+    render_terminal(impl_->canvas, impl_->buffer, impl_->command);
+
+    while (impl_->active) {
+        bool changed = impl_->read_pending();
+        changed = impl_->reap_if_done() || changed;
+
+        KeyEvent event = impl_->input.poll_event(std::chrono::milliseconds(30));
         if (event.key == Key::Escape) {
-            kill(pid, SIGTERM);
-            waitpid(pid, &status, 0);
-            exit_code = -1;
-            active = false;
-            changed = true;
+            return TerminalPageResult::Minimized;
         } else {
             std::string seq = key_to_terminal_sequence(event);
             if (!seq.empty()) {
-                write(master, seq.data(), seq.size());
+                ssize_t written = write(impl_->master, seq.data(), seq.size());
+                (void)written;
             }
         }
 
         if (changed) {
-            render_terminal(canvas, buffer, command);
+            render_terminal(impl_->canvas, impl_->buffer, impl_->command);
         }
     }
 
-    if (sysplause) {
-        std::string msg = "\n[ZeroShell] exit " + std::to_string(exit_code) + ". Enter/ESC back.";
+    if (impl_->sysplause) {
+        std::string msg = "\n[ZeroShell] exit " + std::to_string(impl_->last_exit_code) + ". Enter/ESC back.";
         for (char ch : msg) {
-            buffer.put(ch);
+            impl_->buffer.put(ch);
         }
-        render_terminal(canvas, buffer, command);
+        render_terminal(impl_->canvas, impl_->buffer, impl_->command);
         while (true) {
-            KeyEvent event = input.poll_event(std::chrono::milliseconds(100));
+            KeyEvent event = impl_->input.poll_event(std::chrono::milliseconds(100));
             if (event.key == Key::Enter || event.key == Key::Escape) {
                 break;
             }
         }
     }
 
-    close(master);
-    return exit_code;
+    return TerminalPageResult::Exited;
+}
+
+bool TerminalSession::poll_background()
+{
+    if (!impl_) {
+        return false;
+    }
+    impl_->read_pending();
+    impl_->reap_if_done();
+    return impl_->active;
+}
+
+bool TerminalSession::running() const
+{
+    return impl_ && impl_->active;
+}
+
+int TerminalSession::exit_code() const
+{
+    return impl_ ? impl_->last_exit_code : -1;
+}
+
+const std::string &TerminalSession::command() const
+{
+    static const std::string empty;
+    return impl_ ? impl_->command : empty;
+}
+
+int run_terminal_page(FramebufferCanvas &canvas,
+                      InputDevice &input,
+                      const std::string &command,
+                      bool sysplause)
+{
+    TerminalSession session(canvas, input, command, sysplause);
+    if (!session.start()) {
+        return -1;
+    }
+    TerminalPageResult result = session.run_foreground();
+    if (result == TerminalPageResult::Exited) {
+        return session.exit_code();
+    }
+    return 0;
 }
 
 } // namespace zero_shell
-

@@ -24,39 +24,23 @@ else
         -I"$ROOT_DIR/main/include" \
         "$ROOT_DIR/main/src/app_catalog.cpp" \
         "$ROOT_DIR/main/src/framebuffer_canvas.cpp" \
+        "$ROOT_DIR/main/src/image.cpp" \
         "$ROOT_DIR/main/src/input_device.cpp" \
         "$ROOT_DIR/main/src/main.cpp" \
         "$ROOT_DIR/main/src/process_runner.cpp" \
         "$ROOT_DIR/main/src/pty_terminal.cpp" \
         "$ROOT_DIR/main/src/shell_ui.cpp" \
         "$ROOT_DIR/main/src/status.cpp" \
+        $(pkg-config --cflags --libs libpng 2>/dev/null || printf '%s' '-lpng') \
         -lutil \
         -o "$BUILD_DIR/zero-shell"
 fi
 
 install -d -m 0755 /opt/cardputer-zero-shell/bin
-install -d -m 0755 /opt/cardputer-zero-shell/scripts
 install -d -m 0755 /usr/share/APPLaunch/applications
 install -d -m 0755 /usr/share/APPLaunch/share/images
 
 install -m 0755 "$BUILD_DIR/zero-shell" /opt/cardputer-zero-shell/bin/zero-shell
-
-for script in "$ROOT_DIR"/scripts/*.sh; do
-    [ -e "$script" ] || continue
-    install -m 0755 "$script" "/opt/cardputer-zero-shell/scripts/$(basename "$script")"
-done
-
-for desktop in "$ROOT_DIR"/applications/*.desktop; do
-    [ -e "$desktop" ] || continue
-    install -m 0644 "$desktop" "/usr/share/APPLaunch/applications/$(basename "$desktop")"
-done
-
-if [ -d "$ROOT_DIR/main/assets/images" ]; then
-    for image in "$ROOT_DIR"/main/assets/images/*; do
-        [ -e "$image" ] || continue
-        install -m 0644 "$image" "/usr/share/APPLaunch/share/images/$(basename "$image")"
-    done
-fi
 
 echo "cardputer-zero-shell installed:"
 echo "  /opt/cardputer-zero-shell/bin/zero-shell"

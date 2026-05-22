@@ -12,6 +12,7 @@ struct AppEntry {
     std::string exec;
     std::string icon;
     std::string try_exec;
+    std::string short_name;
     bool terminal = false;
     bool sysplause = true;
 };
@@ -33,4 +34,3 @@ std::string resolve_applaunch_path(const std::string &path);
 bool command_available(const std::string &command);
 
 } // namespace zero_shell
-

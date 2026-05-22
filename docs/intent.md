@@ -175,7 +175,7 @@ Because ZeroShell is small-screen first:
 - application discovery is intentionally narrow,
 - UI density is optimized for 320x170 class displays,
 - keyboard navigation matters more than mouse interaction,
-- a five-slot carousel is acceptable for MVP,
+- a three-card carousel is acceptable for MVP,
 - full XDG desktop compliance is not required in the first version.
 
 ## Non-Goals
@@ -195,4 +195,3 @@ MVP non-goals:
 - background root daemon
 
 Those can exist as separate applications launched through `.desktop` entries, not as built-in ZeroShell responsibilities.
-

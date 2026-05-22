@@ -46,12 +46,13 @@ Supported format:
 
 ```ini
 [Desktop Entry]
-Name=Terminal
-TryExec=bash
-Exec=bash
-Terminal=true
-Icon=share/images/cli_100.png
+Name=LoFiBox
+TryExec=/usr/lib/lofibox/lofibox-applaunch
+Exec=/usr/lib/lofibox/lofibox-applaunch
+Terminal=false
+Icon=share/images/lofibox.png
 Sysplause=false
+X-Zero-ShortName=LOFI
 ```
 
 Supported fields:
@@ -64,6 +65,7 @@ Supported fields:
 | `Terminal` | no | Run in ZeroShell terminal page when true |
 | `TryExec` | no | Hide app when executable is unavailable |
 | `Sysplause` | no | Pause after terminal command exits when true |
+| `X-Zero-ShortName` | no | Short launcher label for the 320x170 UI |
 
 Unknown fields are ignored.
 
@@ -74,10 +76,21 @@ Unknown fields are ignored.
 Example:
 
 ```ini
-Name=Terminal
+Name=LoFiBox
 ```
 
 MVP UI may truncate long labels to fit the 320x170 screen.
+
+`X-Zero-ShortName` can be used when an app needs a shorter small-screen label:
+
+```ini
+Name=App Store
+X-Zero-ShortName=STORE
+```
+
+ZeroShell must not hard-code app-specific aliases such as mapping one concrete
+application name to another. App packages own their display names and short
+labels through their `.desktop` entries.
 
 ## Exec
 
@@ -86,7 +99,7 @@ MVP UI may truncate long labels to fit the 320x170 screen.
 Example:
 
 ```ini
-Exec=bash
+Exec=/usr/lib/lofibox/lofibox-applaunch
 ```
 
 The MVP runs commands through `/bin/sh -lc` for blocking external commands and through a PTY shell for terminal commands.
@@ -99,7 +112,7 @@ Examples:
 
 ```ini
 TryExec=bash
-TryExec=/opt/cardputer-zero-shell/scripts/files-fallback.sh
+TryExec=/usr/lib/my-tool/my-tool
 ```
 
 If `TryExec` is missing, ZeroShell uses the first token of `Exec`.
@@ -147,16 +160,18 @@ The name is preserved for compatibility with the existing APPLaunch convention.
 `Icon` can be an APPLaunch relative path:
 
 ```ini
-Icon=share/images/cli_100.png
+Icon=share/images/lofibox.png
 ```
 
 or an absolute path:
 
 ```ini
-Icon=/usr/share/APPLaunch/share/images/cli_100.png
+Icon=/usr/share/APPLaunch/share/images/lofibox.png
 ```
 
-The current framebuffer MVP renders icon tiles using app initials. The icon field is still parsed and preserved as part of the compatibility contract, so a future LVGL/image backend can render it.
+The current framebuffer UI renders PNG icons when `Icon` resolves to a readable
+APPLaunch-compatible image path. If the icon is missing or unreadable, it falls
+back to a simple placeholder glyph.
 
 ## Duplicate Handling
 
