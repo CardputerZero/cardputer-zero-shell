@@ -13,6 +13,9 @@ struct AppEntry {
     std::string icon;
     std::string try_exec;
     std::string short_name;
+    std::string startup_wm_class;
+    std::string zero_app_id;
+    std::string zero_display;
     bool terminal = false;
     bool sysplause = true;
 };

@@ -1,29 +1,43 @@
-# Runtime Contract
+﻿# Runtime Contract
 
-本文档定义 ZeroShell 的运行身份、启动路径、环境变量和系统依赖。
+This document defines how ZeroShell runs, which process identity it must use,
+and how its two display backends relate to `cardputer-zero-os`.
 
 ## Launch Chain
 
-The intended launch chain is:
+The current Wayland/labwc production chain is:
 
 ```text
-zero-greeter
-  -> PAM authenticates existing system user
-  -> cardputer-zero-session
+cardputer-zero-os
+  -> greetd/PAM authenticates existing Linux user
+  -> /usr/local/bin/cardputer-zero-session
+  -> /usr/local/bin/cardputer-zero-labwc-session
+  -> labwc on /dev/dri/cardputer-zero-internal
+  -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
+```
+
+The legacy direct-framebuffer compatibility chain is explicit only:
+
+```text
+CARDPUTER_ZERO_SESSION_MODE=framebuffer
   -> /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
-`zero-greeter` and PAM are not part of ZeroShell. They belong to `cardputer-zero-os`.
+`zero-greeter`, PAM, greetd, labwc startup policy, and DRM device selection are
+not part of ZeroShell. They belong to `cardputer-zero-os`.
 
-## Binary Path
+## Binary Paths
 
-Canonical installed binary:
+Installed binaries:
 
 ```text
+/opt/cardputer-zero-shell/bin/zero-shell-wayland
 /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
-`cardputer-zero-session` should exec this binary after login.
+`zero-shell-wayland` is the launcher/task UI client used inside the
+Wayland/labwc session. `zero-shell` is the legacy direct-framebuffer
+implementation.
 
 ## User Identity
 
@@ -35,48 +49,66 @@ Check:
 ps -eo user,pid,args | grep zero-shell
 ```
 
-Expected:
+Expected Wayland/labwc process shape:
 
 ```text
-pi      1234 /opt/cardputer-zero-shell/bin/zero-shell
+pi      1234 /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
 Not acceptable:
 
 ```text
+root    1234 /opt/cardputer-zero-shell/bin/zero-shell-wayland
 root    1234 /opt/cardputer-zero-shell/bin/zero-shell
 ```
 
-The current implementation refuses to run when `geteuid() == 0`.
+The framebuffer implementation refuses to run as root. The Wayland client should
+also be treated as a normal user desktop client, never as a root service.
 
-## Required Permissions
+## Display Targets
 
-ZeroShell needs user-level access to:
+### Wayland/labwc Display
 
-- the internal framebuffer device, normally `/dev/fb0` or another `fb_st7789` framebuffer,
-- the Cardputer keyboard evdev device,
-- user runtime environment for child applications.
+Wayland/labwc display model:
 
-Device permission setup belongs to `cardputer-zero-os`.
+```text
+ZeroShell Wayland client
+  -> labwc compositor
+  -> /dev/dri/cardputer-zero-internal
+  -> SPI-1 internal ST7789 display
+```
 
-ZeroShell should not try to fix permissions by running itself as root.
+In this model ZeroShell must not open `/dev/fb0` or `/dev/fb1`. Output
+ownership, focus, activation, minimize, close, and stacking belong to labwc.
 
-## Display Target
+### Legacy Framebuffer Display
 
-ZeroShell targets the internal Cardputer Zero screen.
+Legacy display model:
+
+```text
+ZeroShell
+  -> direct framebuffer
+```
 
 Framebuffer selection:
 
 1. `ZEROSHELL_FBDEV` if set,
 2. `/proc/fb` entry whose name contains `st7789`,
-3. `/sys/class/graphics/fb*/name` containing `st7789`,
+3. `/sys/class/graphics/fb*/name` containing `st7789` or `panel-mipi-dbid`,
 4. fallback `/dev/fb0`.
 
-This is intentionally separate from HDMI and desktop display managers.
+This mode is intentionally separate from HDMI and desktop display managers. It
+is not the Wayland/labwc multitasking model.
 
 ## Input Target
 
-Keyboard selection:
+In the Wayland/labwc session:
+
+- normal keyboard events go to the focused Wayland client through labwc;
+- `Tab` is bound by labwc to `zero-shell-control tasks`;
+- short/long `Esc` is handled by `zero-key-policy` from `cardputer-zero-os`.
+
+In legacy framebuffer mode, ZeroShell reads Linux evdev directly:
 
 1. `ZEROSHELL_KEYBOARD_DEVICE` if set,
 2. `/dev/input/by-path/*3f804000.i2c*event*`,
@@ -89,12 +121,13 @@ Supported environment variables:
 
 | Variable | Meaning |
 | --- | --- |
-| `ZEROSHELL_FBDEV` | Override framebuffer device |
-| `ZEROSHELL_KEYBOARD_DEVICE` | Override keyboard evdev device |
-| `ZEROSHELL_APPLICATIONS_DIR` | Override application scan directory for development |
-| `ZEROSHELL_APPLAUNCH_DIR` | Override APPLaunch data root for development |
+| `ZEROSHELL_APPLICATIONS_DIR` | Override application scan directory for development. |
+| `ZEROSHELL_APPLAUNCH_DIR` | Override APPLaunch data root for development. |
+| `ZEROSHELL_FBDEV` | Override framebuffer device in legacy mode. |
+| `ZEROSHELL_KEYBOARD_DEVICE` | Override keyboard evdev device in legacy mode. |
+| `ZERO_SHELL_WAYLAND_DEBUG` | Enable extra key/debug logging in the Wayland client. |
 
-Production default:
+Production defaults:
 
 ```text
 ZEROSHELL_APPLICATIONS_DIR=/usr/share/APPLaunch/applications
@@ -107,27 +140,36 @@ Applications launched by ZeroShell inherit the same user identity as ZeroShell.
 
 ZeroShell must not launch user applications as root.
 
-If an application requires privileged actions, that app should use the restricted helper contract provided by `cardputer-zero-os`, usually:
+If an application requires privileged actions, that app should use the
+restricted helper contract provided by `cardputer-zero-os`, usually:
 
 ```text
-/usr/local/sbin/zero-helper <allowed-action>
+pkexec /usr/local/sbin/zero-helper <allowed-action>
 ```
 
 `zero-helper` owns the `pkexec`/polkit transition. ZeroShell and child apps stay
-normal user processes and should not wrap helper calls in `sudo`.
+normal user processes and should not wrap helper calls in arbitrary `sudo`.
 
 ## Session Recovery
 
-If `/opt/cardputer-zero-shell/bin/zero-shell` is missing, recovery belongs to `cardputer-zero-os` via `cardputer-zero-session`.
+If `zero-shell-wayland` is missing or fails in the Wayland/labwc session, recovery belongs to
+`cardputer-zero-os` through SSH or HDMI LightDM. The session should not silently
+fall back to the framebuffer shell.
 
-ZeroShell itself should not own login recovery.
+ZeroShell itself does not own login recovery.
 
 ## Development Runtime
 
-For development, run as a normal user:
+For legacy framebuffer development, run as a normal user:
 
 ```sh
 ZEROSHELL_APPLICATIONS_DIR=./applications ./build/zero-shell
+```
+
+For Wayland development, run inside a Wayland session:
+
+```sh
+ZEROSHELL_APPLICATIONS_DIR=./applications ./build/zero-shell-wayland
 ```
 
 Do not use `sudo` for normal shell execution.

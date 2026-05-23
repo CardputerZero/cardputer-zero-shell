@@ -1,4 +1,4 @@
-# ZeroShell Intent
+﻿# ZeroShell Intent
 
 本文档定义 `cardputer-zero-shell` 的业务意图、非意图和系统边界。
 
@@ -109,7 +109,7 @@ ZeroShell 要保留的是登录后的 GUI launcher 能力，而不是旧 Launche
 - session launch
 - device permissions
 - `zero-helper`
-- recovery path
+- recovery surface
 
 `cardputer-zero-shell` 负责：
 
@@ -195,3 +195,20 @@ MVP non-goals:
 - background root daemon
 
 Those can exist as separate applications launched through `.desktop` entries, not as built-in ZeroShell responsibilities.
+
+## Wayland/labwc Direction
+
+The long-term DRM/KMS + labwc design keeps the same business boundary but
+changes the graphics substrate:
+
+```text
+ZeroShell direct framebuffer launcher
+  -> ZeroShell Wayland launcher/task UI client
+```
+
+In that design, ZeroShell still owns APPLaunch scanning, launcher UI, and task
+UI presentation. It does not become a compositor or a process-level window
+manager. Task identity moves from launched processes to compositor-managed
+Wayland/Xwayland toplevels.
+
+More detail: [`wayland-task-model.md`](wayland-task-model.md).

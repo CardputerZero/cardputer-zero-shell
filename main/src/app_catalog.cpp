@@ -107,6 +107,9 @@ bool parse_desktop_file(const std::filesystem::path &path, AppEntry &entry)
     entry.icon = values["Icon"];
     entry.try_exec = values["TryExec"];
     entry.short_name = values["X-Zero-ShortName"];
+    entry.startup_wm_class = values["StartupWMClass"];
+    entry.zero_app_id = values["X-Zero-AppId"];
+    entry.zero_display = values["X-Zero-Display"];
     entry.terminal = parse_bool(values["Terminal"], false);
     entry.sysplause = parse_bool(values["Sysplause"], true);
 

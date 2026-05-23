@@ -1,4 +1,4 @@
-# APPLaunch Application Contract
+﻿# APPLaunch Application Contract
 
 本文档定义 ZeroShell 兼容的 APPLaunch 应用发现契约。
 
@@ -68,6 +68,36 @@ Supported fields:
 | `X-Zero-ShortName` | no | Short launcher label for the 320x170 UI |
 
 Unknown fields are ignored.
+
+The Wayland/labwc session may use additional optional window-matching hints:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `StartupWMClass` | no | Xwayland/X11 window class hint |
+| `X-Zero-AppId` | no | Wayland app id hint for matching compositor tasks |
+| `X-Zero-Display` | no | Runtime display contract: `wayland`, `xwayland`, or `framebuffer` |
+
+`StartupWMClass` and `X-Zero-AppId` are optional matching hints. They do not
+replace `Name`, `Exec`, or `Icon`, and they must not be used to hard-code
+app-specific behavior in ZeroShell.
+
+`X-Zero-Display` is required for `zero-shell-wayland` to launch an app. The
+Wayland/labwc session only starts apps that explicitly declare `X-Zero-Display=wayland` or
+`X-Zero-Display=xwayland`.
+
+In the Wayland/labwc session, apps must create a Wayland or Xwayland window to
+be launched by `zero-shell-wayland`. Direct framebuffer apps are not compositor
+tasks and will fight the compositor for the internal display. A framebuffer-only
+app should either declare:
+
+```ini
+X-Zero-Display=framebuffer
+```
+
+or omit `X-Zero-Display` until it has a windowed build. `zero-shell-wayland`
+will refuse to launch entries that do not explicitly declare a
+Wayland/Xwayland runtime surface, so a legacy direct-fb app cannot accidentally
+make the screen flicker.
 
 ## Name
 

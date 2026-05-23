@@ -1,60 +1,70 @@
-# User Guide
+﻿# User Guide
 
-本文档描述最终用户如何使用 ZeroShell。
+This guide describes the current Wayland/labwc user experience. The legacy
+direct-framebuffer behavior is noted where it differs.
 
 ## Where ZeroShell Appears
 
-ZeroShell 出现在用户登录成功之后。
-
-正常流程：
+ZeroShell appears after login:
 
 ```text
 Raspberry Pi OS boots
-  -> cardputer-zero-os greeter
-  -> user logs in
+  -> cardputer-zero-os internal greeter
+  -> user logs in through greetd/PAM
   -> cardputer-zero-session
+  -> labwc on the internal screen
   -> ZeroShell home screen
 ```
 
-ZeroShell 不显示在：
+ZeroShell does not appear during:
 
-- firmware boot stage
-- kernel boot stage
-- GUI greeter before login
-- HDMI LightDM login
+- firmware boot,
+- kernel boot,
+- the GUI greeter before login,
+- HDMI LightDM login.
 
 ## Home Screen
 
-MVP home screen 是一个三卡片 carousel：
+The home screen is a three-card carousel:
 
 ```text
 left / center / right
 ```
 
-中心槽位是当前选中的应用。按 `Enter` 会启动中心应用。
+The center slot is the selected app. Press `Enter` to launch it.
 
-顶部状态栏显示：
+The top bar shows time and basic status. The bottom bar shows the most important
+controls, including `Tab` for the running task panel.
 
-- `ZeroShell`
-- WiFi 状态
-- battery 百分比
-- time
+## Wayland/labwc Controls
 
-底部显示基础操作提示。
-
-## Controls
-
-MVP controls:
+Home:
 
 | Key | Action |
 | --- | --- |
 | `Left` | Select previous app |
 | `Right` | Select next app |
 | `Enter` | Open selected app |
-| `Tab` | Open running task menu |
+| `Tab` | Toggle running task panel |
 | `R` | Reload `/usr/share/APPLaunch/applications` |
-| `Esc` | Open power menu |
-| `Q` | Quit shell, mainly for development/recovery |
+
+Running task panel:
+
+| Key | Action |
+| --- | --- |
+| `Up` / `Down` | Select task |
+| `Enter` | Focus selected task |
+| `Tab` / `Esc` | Hide task panel |
+
+Global app policy:
+
+| Key | Action |
+| --- | --- |
+| Short `Esc` | Minimize the active app window and return to ZeroShell |
+| Long `Esc` | Request close on the active app window and return to ZeroShell |
+
+Short/long Esc is implemented by `cardputer-zero-os` because a normal Wayland
+client cannot receive global keys while another app has focus.
 
 ## Launching Apps
 
@@ -64,76 +74,51 @@ ZeroShell launches apps from:
 /usr/share/APPLaunch/applications/*.desktop
 ```
 
-Each `.desktop` file declares the app name, command, icon and launch mode.
-
-Example:
+Example Wayland/labwc entry:
 
 ```ini
 [Desktop Entry]
 Name=LoFiBox
-TryExec=/usr/lib/lofibox/lofibox-applaunch
-Exec=/usr/lib/lofibox/lofibox-applaunch
+TryExec=lofibox
+Exec=lofibox
 Terminal=false
 Icon=share/images/lofibox.png
 Sysplause=false
+X-Zero-Display=xwayland
+StartupWMClass=lofibox
 ```
 
-ZeroShell also watches the APPLaunch directory and reloads when package installs
-or manual file changes update the directory metadata. Press `R` if you want to
-force a reload immediately.
-
-## Terminal Apps
-
-If an entry has:
+The Wayland/labwc shell only launches entries that declare a compositor-managed display mode:
 
 ```ini
-Terminal=true
+X-Zero-Display=wayland
 ```
 
-ZeroShell opens an internal framebuffer PTY terminal page and runs the command there.
-Pressing `Esc` on a terminal page minimizes it back to the ZeroShell home screen
-instead of killing it. A minimized terminal app stays in the running task list
-and its launcher icon shows a `RUN` badge.
+or:
 
-Examples:
+```ini
+X-Zero-Display=xwayland
+```
 
-- `bash`
-- `top`
-- `htop`
-- `nmtui`
-- small command-line tools
-
-The MVP terminal is intentionally minimal. It is enough for basic interaction, but it is not yet a full terminal emulator for every advanced curses application.
+Direct framebuffer apps should not be launched inside the labwc session by
+default because they can fight the compositor for the internal screen.
 
 ## Running Tasks
 
-`Terminal=true` apps can be minimized and restored.
+In the Wayland/labwc session, running tasks are windows that labwc can see.
 
-Controls:
+A running task is not simply a PID or a child process. For example, an app may
+start through a shell wrapper and then create a separate GUI process. ZeroShell
+therefore uses compositor-visible toplevels instead of treating process trees as
+the task list.
 
-| Key | Action |
-| --- | --- |
-| `Esc` inside terminal | Minimize terminal task |
-| `Tab` on home | Open task menu |
-| `Up` / `Down` | Select task |
-| `Enter` | Restore selected task |
-| `Esc` / `Tab` | Close task menu |
+If an app is visible on screen but absent from the running task panel, check:
 
-Apps with a running minimized terminal task show a `RUN` badge on their launcher
-card. `Terminal=false` apps still run as foreground blocking apps and do not
-enter the task list in the MVP.
-
-## External Apps
-
-If an entry has:
-
-```ini
-Terminal=false
+```sh
+XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 wlrctl toplevel list
 ```
 
-ZeroShell runs the command as a blocking external app. When the command exits, ZeroShell returns to the home screen.
-
-This mode is intended for applications that can take over the screen or run their own UI.
+If it does not appear there, it is probably not a Wayland/Xwayland window.
 
 ## Reloading Apps
 
@@ -149,38 +134,40 @@ to rescan:
 /usr/share/APPLaunch/applications
 ```
 
-ZeroShell also watches directory modification time during its main loop and reloads when `.desktop` files change.
+ZeroShell also watches directory modification time during its main loop and
+reloads when `.desktop` files change.
 
-## Power Menu
+## Privileged Actions
 
-Press:
-
-```text
-Esc
-```
-
-to open the power menu.
-
-MVP menu items:
-
-- Cancel
-- Reboot
-- Shutdown
-
-Privileged power actions are routed through:
+ZeroShell and child apps run as normal users. Privileged actions should go
+through:
 
 ```text
-/usr/local/sbin/zero-helper
+pkexec /usr/local/sbin/zero-helper <allowed-action>
 ```
 
-`zero-helper` asks `cardputer-zero-os`/polkit for authorization when required.
-ZeroShell does not directly run `sudo reboot`, `sudo shutdown`, arbitrary
-`systemctl`, or arbitrary shell commands for system actions.
+`zero-helper` and the polkit agent belong to `cardputer-zero-os`. ZeroShell does
+not directly run arbitrary `sudo`, `systemctl`, or `apt` commands.
+
+## Legacy Framebuffer Notes
+
+The legacy `zero-shell` binary still supports:
+
+- direct framebuffer drawing,
+- internal evdev keyboard handling,
+- `Terminal=true` entries through a minimal PTY terminal page,
+- a power menu.
+
+That backend is useful for compatibility and recovery, but it is not the Wayland/labwc
+multitasking model. In legacy mode, `Terminal=false` apps are blocking
+foreground processes and do not become compositor-managed running tasks.
 
 ## HDMI And Other Screens
 
 ZeroShell is for the Cardputer Zero internal small screen.
 
-It is not the HDMI login path. HDMI can continue to use the base OS display manager, such as LightDM, as configured by `cardputer-zero-os` and Raspberry Pi OS.
+It is not the HDMI login surface. HDMI can continue to use the base OS display
+manager, such as LightDM, as configured by `cardputer-zero-os` and Raspberry Pi
+OS.
 
 ZeroShell should not disable or replace HDMI login.

@@ -1,4 +1,4 @@
-# Relationship To cardputer-zero-os
+﻿# Relationship To cardputer-zero-os
 
 本文档专门记录 `cardputer-zero-shell` 和 `cardputer-zero-os` 的关系。
 
@@ -92,10 +92,25 @@ It should not:
 
 - disable LightDM,
 - replace HDMI login,
-- own the HDMI desktop path,
+- own the HDMI desktop session,
 - force all displays through ZeroShell.
 
-If HDMI is plugged in, the base OS / LightDM path can continue to exist independently.
+If HDMI is plugged in, the base OS / LightDM session can continue to exist independently.
+
+## Wayland/labwc Graphics Rule
+
+With the DRM/KMS + labwc graphics stack, the split becomes:
+
+```text
+cardputer-zero-os
+  owns DRM/KMS setup, labwc session setup, seat/input policy, greeter/session
+
+cardputer-zero-shell
+  runs as a Wayland client and presents launcher/task UI
+```
+
+ZeroShell should not configure device-tree overlays, DRM cards, seats,
+LightDM, or labwc startup policy. Those remain OS responsibilities.
 
 ## Recovery Rule
 

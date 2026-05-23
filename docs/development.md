@@ -78,7 +78,7 @@ those entries, not to define system tools.
 
 Do not call arbitrary privileged commands from ZeroShell.
 
-Preferred path:
+Preferred flow:
 
 1. Add a restricted action to `zero-helper` in `cardputer-zero-os`.
 2. Allow it through the OS polkit policy.
