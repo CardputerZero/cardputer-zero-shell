@@ -28,7 +28,9 @@
 
 ```text
 cardputer-zero-os
-  -> starts /opt/cardputer-zero-shell/bin/zero-shell-wayland
+  -> starts cardputer-zero-shell-session inside the authenticated user session
+  -> cardputer-zero-shell-session starts zero-window-agent
+  -> cardputer-zero-shell-session execs /opt/cardputer-zero-shell/bin/zero-shell-wayland
 
 cardputer-zero-shell
   -> may request controlled OS actions through zero-helper/polkit
@@ -44,7 +46,9 @@ OS starts the shell inside a real user Wayland session:
 ```text
 /usr/local/bin/cardputer-zero-session
   -> /usr/local/bin/cardputer-zero-labwc-session
-  -> labwc -S /opt/cardputer-zero-shell/bin/zero-shell-wayland
+  -> labwc -S /usr/local/bin/cardputer-zero-shell-session
+  -> zero-window-agent
+  -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
 Shell expects:
@@ -53,10 +57,15 @@ Shell expects:
 - `XDG_RUNTIME_DIR`,
 - `/usr/share/APPLaunch/applications`,
 - `/usr/share/APPLaunch/share/images`,
-- `wlrctl` for current task control.
+- `zero-window-agent` at
+  `/run/user/$UID/cardputer-zero/window-agent.sock` for task state and task
+  control.
 
 Global `Tab` and `Esc` behavior is delivered through:
 
 ```text
 /usr/local/bin/zero-shell-control
 ```
+
+`zero-shell-control` is also a client of `zero-window-agent`. It must not use
+`wlrctl` or process-tree guessing as a production fallback.

@@ -10,6 +10,8 @@ cardputer-zero-os
   -> /usr/local/bin/cardputer-zero-session
   -> /usr/local/bin/cardputer-zero-labwc-session
   -> labwc on /dev/dri/cardputer-zero-internal
+  -> /usr/local/bin/cardputer-zero-shell-session
+  -> zero-window-agent
   -> /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
@@ -58,6 +60,19 @@ zero-shell-wayland
 
 Output ownership, focus, activation, minimize, close, and stacking belong to
 labwc.
+
+## Task Backend
+
+Task state and task actions come from:
+
+```text
+/run/user/$UID/cardputer-zero/window-agent.sock
+```
+
+The socket is provided by `zero-window-agent` from `cardputer-zero-os`.
+ZeroShell must not parse `wlrctl`, inspect process trees, or infer tasks from
+child processes. If the agent is unavailable after startup, the UI shows an
+explicit offline task backend state.
 
 ## Input Target
 

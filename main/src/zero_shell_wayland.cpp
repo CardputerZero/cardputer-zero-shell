@@ -19,10 +19,12 @@
 #include <linux/input-event-codes.h>
 #include <poll.h>
 #include <string>
+#include <sys/socket.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <unistd.h>
 #include <vector>
 #include <wayland-client.h>
@@ -68,8 +70,13 @@ struct Glyph {
 };
 
 struct WindowTask {
+    std::string id;
     std::string app_id;
     std::string title;
+    bool activated = false;
+    bool minimized = false;
+    bool maximized = false;
+    bool fullscreen = false;
 };
 
 bool same_tasks(const std::vector<WindowTask> &left, const std::vector<WindowTask> &right)
@@ -78,7 +85,13 @@ bool same_tasks(const std::vector<WindowTask> &left, const std::vector<WindowTas
         return false;
     }
     for (size_t i = 0; i < left.size(); ++i) {
-        if (left[i].app_id != right[i].app_id || left[i].title != right[i].title) {
+        if (left[i].id != right[i].id ||
+            left[i].app_id != right[i].app_id ||
+            left[i].title != right[i].title ||
+            left[i].activated != right[i].activated ||
+            left[i].minimized != right[i].minimized ||
+            left[i].maximized != right[i].maximized ||
+            left[i].fullscreen != right[i].fullscreen) {
             return false;
         }
     }
@@ -265,26 +278,26 @@ bool launch_detached(const std::string &command)
     return true;
 }
 
-std::string shell_quote(const std::string &value)
+bool set_nonblock(int fd)
 {
-    std::string quoted = "'";
-    for (char ch : value) {
-        if (ch == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted.push_back(ch);
-        }
-    }
-    quoted += "'";
-    return quoted;
-}
-
-bool run_shell_command(const std::string &command)
-{
-    if (command.empty()) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
         return false;
     }
-    return std::system(command.c_str()) == 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+std::string window_agent_socket_path()
+{
+    const char *path = std::getenv("ZERO_WINDOW_AGENT_SOCKET");
+    if (path && *path) {
+        return path;
+    }
+    const char *runtime = std::getenv("XDG_RUNTIME_DIR");
+    if (runtime && *runtime) {
+        return std::string(runtime) + "/cardputer-zero/window-agent.sock";
+    }
+    return {};
 }
 
 std::string runtime_command_path()
@@ -342,6 +355,74 @@ uint16_t normalize_wayland_key(uint32_t key)
     return static_cast<uint16_t>(key);
 }
 
+int hex_value(char ch)
+{
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    }
+    if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    }
+    return -1;
+}
+
+std::string decode_agent_field(const std::string &value)
+{
+    std::string output;
+    output.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] == '%' && i + 2 < value.size()) {
+            int hi = hex_value(value[i + 1]);
+            int lo = hex_value(value[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                output.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+                continue;
+            }
+        }
+        output.push_back(value[i]);
+    }
+    return output;
+}
+
+std::vector<std::string> split_agent_fields(const std::string &line)
+{
+    std::vector<std::string> fields;
+    size_t start = 0;
+    while (start <= line.size()) {
+        size_t tab = line.find('\t', start);
+        if (tab == std::string::npos) {
+            fields.push_back(decode_agent_field(line.substr(start)));
+            break;
+        }
+        fields.push_back(decode_agent_field(line.substr(start, tab - start)));
+        start = tab + 1;
+    }
+    return fields;
+}
+
+bool state_has(const std::string &states, const std::string &needle)
+{
+    size_t start = 0;
+    while (start <= states.size()) {
+        size_t comma = states.find(',', start);
+        std::string value = comma == std::string::npos
+            ? states.substr(start)
+            : states.substr(start, comma - start);
+        if (value == needle) {
+            return true;
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return false;
+}
+
 class WaylandShell {
 public:
     bool init();
@@ -374,7 +455,13 @@ private:
     Buffer *next_buffer();
     void load_apps();
     void reload_apps_if_changed();
-    void refresh_tasks(bool force = false);
+    void init_task_backend();
+    void reconnect_task_backend();
+    void read_task_backend();
+    void flush_task_backend();
+    void handle_agent_line(const std::string &line);
+    void apply_agent_snapshot();
+    void send_agent_command(const std::string &command);
     void process_commands();
     void update_launch_status();
     void set_status(std::string message, std::chrono::milliseconds duration);
@@ -421,7 +508,13 @@ private:
     std::filesystem::file_time_type last_catalog_mtime_{};
     std::vector<zero_shell::AppEntry> apps_;
     std::vector<WindowTask> tasks_;
-    std::chrono::steady_clock::time_point tasks_last_refresh_{};
+    std::vector<WindowTask> pending_tasks_;
+    bool reading_task_snapshot_ = false;
+    bool task_backend_online_ = false;
+    int task_backend_fd_ = -1;
+    std::string task_backend_input_;
+    std::string task_backend_output_;
+    std::chrono::steady_clock::time_point next_task_backend_reconnect_{};
     bool launch_pending_ = false;
     zero_shell::AppEntry launch_pending_app_;
     std::chrono::steady_clock::time_point launch_deadline_{};
@@ -647,6 +740,7 @@ bool WaylandShell::init()
     }
 
     load_apps();
+    init_task_backend();
     wl_surface_commit(surface_);
     wl_display_flush(display_);
     return true;
@@ -677,57 +771,170 @@ void WaylandShell::reload_apps_if_changed()
     }
 }
 
-void WaylandShell::refresh_tasks(bool force)
+void WaylandShell::init_task_backend()
+{
+    reconnect_task_backend();
+}
+
+void WaylandShell::reconnect_task_backend()
 {
     auto now = std::chrono::steady_clock::now();
-    if (!force && now - tasks_last_refresh_ < std::chrono::milliseconds(750)) {
+    if (task_backend_fd_ >= 0 || now < next_task_backend_reconnect_) {
         return;
     }
-    tasks_last_refresh_ = now;
+    next_task_backend_reconnect_ = now + std::chrono::seconds(1);
 
-    std::vector<WindowTask> tasks;
-    FILE *pipe = popen("wlrctl toplevel list 2>/dev/null", "r");
-    if (!pipe) {
-        if (!tasks_.empty() || task_selection_ != 0) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        task_backend_online_ = false;
+        return;
+    }
+
+    std::string path = window_agent_socket_path();
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    if (path.size() >= sizeof(addr.sun_path)) {
+        close(fd);
+        task_backend_online_ = false;
+        return;
+    }
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+
+    if (connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+        close(fd);
+        if (task_backend_online_ || !tasks_.empty()) {
+            task_backend_online_ = false;
             tasks_.clear();
-            task_selection_ = 0;
             dirty_ = true;
         }
         return;
     }
 
-    char line[512];
-    while (std::fgets(line, sizeof(line), pipe)) {
-        std::string value(line);
-        while (!value.empty() && (value.back() == '\n' || value.back() == '\r')) {
-            value.pop_back();
-        }
-        if (value.empty()) {
-            continue;
-        }
-
-        WindowTask task;
-        size_t sep = value.find(": ");
-        if (sep == std::string::npos) {
-            task.title = value;
-        } else {
-            task.app_id = value.substr(0, sep);
-            task.title = value.substr(sep + 2);
-        }
-
-        if (task.app_id == "cardputer-zero-shell" || task.title == "Cardputer Zero Shell") {
-            continue;
-        }
-        if (task.app_id.empty() && task.title.empty()) {
-            continue;
-        }
-        tasks.push_back(std::move(task));
+    if (!set_nonblock(fd)) {
+        close(fd);
+        task_backend_online_ = false;
+        return;
     }
-    pclose(pipe);
 
-    bool changed = !same_tasks(tasks_, tasks);
+    task_backend_fd_ = fd;
+    task_backend_online_ = true;
+    task_backend_input_.clear();
+    task_backend_output_.clear();
+    reading_task_snapshot_ = false;
+    pending_tasks_.clear();
+    send_agent_command("hello");
+    send_agent_command("subscribe");
+    dirty_ = true;
+}
+
+void WaylandShell::send_agent_command(const std::string &command)
+{
+    if (task_backend_fd_ < 0) {
+        return;
+    }
+    task_backend_output_ += command;
+    task_backend_output_.push_back('\n');
+}
+
+void WaylandShell::flush_task_backend()
+{
+    while (task_backend_fd_ >= 0 && !task_backend_output_.empty()) {
+        ssize_t count = write(task_backend_fd_, task_backend_output_.data(), task_backend_output_.size());
+        if (count > 0) {
+            task_backend_output_.erase(0, static_cast<size_t>(count));
+        } else if (count < 0 && errno == EINTR) {
+            continue;
+        } else if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            return;
+        } else {
+            close(task_backend_fd_);
+            task_backend_fd_ = -1;
+            task_backend_online_ = false;
+            tasks_.clear();
+            dirty_ = true;
+            return;
+        }
+    }
+}
+
+void WaylandShell::read_task_backend()
+{
+    reconnect_task_backend();
+    if (task_backend_fd_ < 0) {
+        return;
+    }
+
+    char buffer[1024];
+    while (true) {
+        ssize_t count = read(task_backend_fd_, buffer, sizeof(buffer));
+        if (count > 0) {
+            task_backend_input_.append(buffer, static_cast<size_t>(count));
+            size_t newline = std::string::npos;
+            while ((newline = task_backend_input_.find('\n')) != std::string::npos) {
+                std::string line = task_backend_input_.substr(0, newline);
+                if (!line.empty() && line.back() == '\r') {
+                    line.pop_back();
+                }
+                task_backend_input_.erase(0, newline + 1);
+                handle_agent_line(line);
+            }
+        } else if (count == 0) {
+            close(task_backend_fd_);
+            task_backend_fd_ = -1;
+            task_backend_online_ = false;
+            tasks_.clear();
+            dirty_ = true;
+            return;
+        } else {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            }
+            close(task_backend_fd_);
+            task_backend_fd_ = -1;
+            task_backend_online_ = false;
+            tasks_.clear();
+            dirty_ = true;
+            return;
+        }
+    }
+}
+
+void WaylandShell::handle_agent_line(const std::string &line)
+{
+    auto fields = split_agent_fields(line);
+    if (fields.empty()) {
+        return;
+    }
+    if (fields[0] == "snapshot-begin") {
+        reading_task_snapshot_ = true;
+        pending_tasks_.clear();
+    } else if (fields[0] == "task" && reading_task_snapshot_ && fields.size() >= 5) {
+        WindowTask task;
+        task.id = fields[1];
+        task.app_id = fields[2];
+        task.title = fields[3];
+        task.activated = state_has(fields[4], "activated");
+        task.minimized = state_has(fields[4], "minimized");
+        task.maximized = state_has(fields[4], "maximized");
+        task.fullscreen = state_has(fields[4], "fullscreen");
+        if (task.app_id != "cardputer-zero-shell" && task.title != "Cardputer Zero Shell") {
+            pending_tasks_.push_back(std::move(task));
+        }
+    } else if (fields[0] == "snapshot-end" && reading_task_snapshot_) {
+        apply_agent_snapshot();
+    }
+}
+
+void WaylandShell::apply_agent_snapshot()
+{
+    reading_task_snapshot_ = false;
+    bool changed = !same_tasks(tasks_, pending_tasks_);
     size_t old_selection = task_selection_;
-    tasks_ = std::move(tasks);
+    tasks_ = std::move(pending_tasks_);
+    pending_tasks_.clear();
     if (task_selection_ >= tasks_.size()) {
         task_selection_ = tasks_.empty() ? 0 : tasks_.size() - 1;
     }
@@ -752,11 +959,9 @@ void WaylandShell::process_commands()
         }
 
         if (command == "show-tasks") {
-            refresh_tasks(true);
             task_view_ = true;
             dirty_ = true;
         } else if (command == "toggle-tasks") {
-            refresh_tasks(true);
             task_view_ = !task_view_;
             dirty_ = true;
         } else if (command == "hide-tasks") {
@@ -780,7 +985,6 @@ void WaylandShell::update_launch_status()
     }
 
     auto now = std::chrono::steady_clock::now();
-    refresh_tasks(false);
 
     if (is_app_running(launch_pending_app_)) {
         launch_pending_ = false;
@@ -792,7 +996,12 @@ void WaylandShell::update_launch_status()
     if (now >= launch_deadline_) {
         launch_pending_ = false;
         if (status_message_ == "LOADING") {
-            status_message_.clear();
+            if (task_backend_online_) {
+                status_message_.clear();
+            } else {
+                status_message_ = "WINDOW AGENT OFFLINE";
+                status_until_ = now + std::chrono::seconds(2);
+            }
         }
         dirty_ = true;
         return;
@@ -822,13 +1031,11 @@ void WaylandShell::handle_key(uint16_t key)
         switch (key) {
         case KEY_TAB:
         case KEY_ESC:
-            refresh_tasks(true);
             task_view_ = false;
             dirty_ = true;
             return;
         case KEY_LEFT:
         case KEY_UP:
-            refresh_tasks(true);
             if (!tasks_.empty()) {
                 task_selection_ = (task_selection_ + tasks_.size() - 1) % tasks_.size();
             }
@@ -836,7 +1043,6 @@ void WaylandShell::handle_key(uint16_t key)
             return;
         case KEY_RIGHT:
         case KEY_DOWN:
-            refresh_tasks(true);
             if (!tasks_.empty()) {
                 task_selection_ = (task_selection_ + 1) % tasks_.size();
             }
@@ -881,7 +1087,6 @@ void WaylandShell::handle_key(uint16_t key)
         if (!apps_.empty()) {
             const auto &app = apps_[current_index_];
             if (can_launch_in_wayland(app)) {
-                refresh_tasks(true);
                 if (focus_app_task(app)) {
                     set_status("OPEN", std::chrono::milliseconds(900));
                     break;
@@ -908,7 +1113,6 @@ void WaylandShell::handle_key(uint16_t key)
         }
         break;
     case KEY_TAB:
-        refresh_tasks(true);
         task_view_ = !task_view_;
         dirty_ = true;
         break;
@@ -925,19 +1129,15 @@ void WaylandShell::handle_key(uint16_t key)
 
 void WaylandShell::focus_task(size_t task_index)
 {
-    refresh_tasks(true);
     if (task_index >= tasks_.size()) {
         return;
     }
 
     const auto &task = tasks_[task_index];
-    std::string command;
-    if (!task.app_id.empty()) {
-        command = "wlrctl toplevel focus app_id:" + shell_quote(task.app_id);
-    } else if (!task.title.empty()) {
-        command = "wlrctl toplevel focus title:" + shell_quote(task.title);
+    if (!task.id.empty()) {
+        send_agent_command("activate\t" + task.id);
+        flush_task_backend();
     }
-    run_shell_command(command);
 }
 
 void WaylandShell::clear(uint32_t *pixels, Color color)
@@ -1171,7 +1371,9 @@ void WaylandShell::draw_task_panel(uint32_t *pixels)
     draw_text(pixels, x + 7, y + 5, "RUNNING TASKS", kPanel, 1);
 
     if (tasks_.empty()) {
-        draw_text(pixels, x + 8, y + 24, "NO TASKS", kMuted, 1);
+        draw_text(pixels, x + 8, y + 24,
+                  task_backend_online_ ? "NO TASKS" : "AGENT OFFLINE",
+                  task_backend_online_ ? kMuted : kWarn, 1);
         return;
     }
 
@@ -1236,7 +1438,6 @@ void WaylandShell::render()
         return;
     }
 
-    refresh_tasks(task_view_);
     draw_frame(buffer->pixels);
     if (apps_.empty()) {
         draw_text_centered(buffer->pixels, kWidth / 2, 58, "NO APPS", kInk, 1);
@@ -1280,7 +1481,7 @@ int WaylandShell::run()
     while (running_ && wl_display_get_error(display_) == 0) {
         process_commands();
         reload_apps_if_changed();
-        refresh_tasks(false);
+        read_task_backend();
         update_launch_status();
         wl_display_dispatch_pending(display_);
         auto now = std::chrono::steady_clock::now();
@@ -1295,14 +1496,40 @@ int WaylandShell::run()
         if (dirty_) {
             render();
         }
+        flush_task_backend();
         wl_display_flush(display_);
 
-        pollfd pfd{};
-        pfd.fd = wl_display_get_fd(display_);
-        pfd.events = POLLIN;
-        int rc = poll(&pfd, 1, 100);
-        if (rc > 0 && (pfd.revents & POLLIN)) {
+        pollfd pfds[2]{};
+        pfds[0].fd = wl_display_get_fd(display_);
+        pfds[0].events = POLLIN;
+        int nfds = 1;
+        if (task_backend_fd_ >= 0) {
+            pfds[1].fd = task_backend_fd_;
+            pfds[1].events = POLLIN;
+            if (!task_backend_output_.empty()) {
+                pfds[1].events |= POLLOUT;
+            }
+            nfds = 2;
+        }
+
+        int rc = poll(pfds, nfds, 100);
+        if (rc > 0 && (pfds[0].revents & POLLIN)) {
             wl_display_dispatch(display_);
+        }
+        if (rc > 0 && nfds > 1) {
+            if (pfds[1].revents & POLLIN) {
+                read_task_backend();
+            }
+            if (pfds[1].revents & POLLOUT) {
+                flush_task_backend();
+            }
+            if (pfds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                close(task_backend_fd_);
+                task_backend_fd_ = -1;
+                task_backend_online_ = false;
+                tasks_.clear();
+                dirty_ = true;
+            }
         }
     }
     return 0;

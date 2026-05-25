@@ -34,10 +34,10 @@ There is one supported runtime binary:
 /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
-ZeroShell is a Wayland client. It draws through Wayland shared-memory buffers,
-uses `wlrctl` to inspect compositor toplevels, and asks labwc to focus existing
-tasks. Display ownership, focus, minimize, close, stacking, and app windows
-belong to the compositor layer.
+ZeroShell is a Wayland client. It draws through Wayland shared-memory buffers
+and consumes compositor task state through `zero-window-agent`, which is started
+by `cardputer-zero-os` inside the same labwc session. Display ownership, focus,
+minimize, close, stacking, and app windows belong to the compositor layer.
 
 ## Boundary
 
@@ -70,7 +70,9 @@ greetd/PAM authenticates an existing Linux user
   -> cardputer-zero-session
   -> cardputer-zero-labwc-session
   -> labwc starts on /dev/dri/cardputer-zero-internal
-  -> labwc starts zero-shell-wayland
+  -> labwc starts cardputer-zero-shell-session
+  -> cardputer-zero-shell-session starts zero-window-agent
+  -> cardputer-zero-shell-session execs zero-shell-wayland
   -> ZeroShell scans /usr/share/APPLaunch/applications/*.desktop
   -> user selects an app and presses Enter
   -> ZeroShell launches Exec without blocking the launcher
@@ -164,22 +166,23 @@ A task is not primarily:
 - a desktop-entry file.
 
 Those can help with launch and matching, but the task exists when labwc can see
-a window. ZeroShell currently reads task state with:
+a window and `zero-window-agent` reports it over:
 
-```sh
-wlrctl toplevel list
+```text
+/run/user/$UID/cardputer-zero/window-agent.sock
 ```
 
-and activates tasks with:
+The socket speaks the `ZWA1` protocol defined by `cardputer-zero-os`. ZeroShell
+uses it for:
 
-```sh
-wlrctl toplevel focus app_id:<id>
-wlrctl toplevel focus title:<title>
-```
+- task snapshots,
+- running badges,
+- task-panel contents,
+- task activation requests.
 
-Future work may replace command-output parsing with a toplevel protocol client
-or a small OS-side window-state agent. The architectural rule stays the same:
-task state comes from compositor windows.
+ZeroShell must not parse command-line compositor output, scan `/proc`, or treat
+launched child processes as tasks. If the agent is unavailable, ZeroShell shows
+an explicit offline task backend state instead of guessing.
 
 ## User Controls
 
@@ -277,10 +280,18 @@ Expected shape:
 pi  /opt/cardputer-zero-shell/bin/zero-shell-wayland
 ```
 
-Check compositor-visible tasks:
+Check the authoritative task backend:
 
 ```sh
-XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 wlrctl toplevel list
+python3 - <<'PY'
+import socket
+p = "/run/user/1000/cardputer-zero/window-agent.sock"
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(2)
+s.connect(p)
+s.sendall(b"list\n")
+print(s.recv(4096).decode())
+PY
 ```
 
 Example:
@@ -299,5 +310,6 @@ lofibox: LoFiBox Zero
 - [docs/spec.md](docs/spec.md)
 - [docs/user-guide.md](docs/user-guide.md)
 - [docs/wayland-task-model.md](docs/wayland-task-model.md)
+- [docs/window-agent-task-backend.md](docs/window-agent-task-backend.md)
 - [docs/install.md](docs/install.md)
 - [docs/development.md](docs/development.md)

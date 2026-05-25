@@ -45,7 +45,7 @@ Installed path:
 
 | File | Responsibility |
 | --- | --- |
-| `main/src/zero_shell_wayland.cpp` | Wayland client, UI rendering, key handling while focused, app launch, task polling. |
+| `main/src/zero_shell_wayland.cpp` | Wayland client, UI rendering, key handling while focused, app launch, and `zero-window-agent` task backend client. |
 | `main/include/zero_shell/app_catalog.hpp` | APPLaunch entry data model. |
 | `main/src/app_catalog.cpp` | Desktop-entry parsing, `TryExec`, path resolution. |
 | `main/include/zero_shell/image.hpp` / `main/src/image.cpp` | PNG icon loading. |
@@ -85,6 +85,9 @@ Running task matching uses:
 
 ZeroShell must not special-case concrete app names.
 
+Task facts must come from `zero-window-agent`. Matching desktop metadata to a
+reported task is allowed; creating a task from desktop metadata alone is not.
+
 ## Security
 
 ZeroShell must:
@@ -114,6 +117,12 @@ Production paths:
 - The shell is a Wayland client.
 - The compositor owns output and window management.
 - A task is a compositor toplevel/window.
+- `zero-window-agent` is the only production task-state and task-action
+  backend.
+- ZeroShell must not invoke or parse `wlrctl`.
+- ZeroShell must not scan `/proc` to infer running tasks.
+- ZeroShell must not treat forked children or process groups as tasks.
+- Missing task backend is an explicit offline state, not a fallback trigger.
 - Fixed tools are desktop entries, not built-in shell pages.
 - Shell failure is handled by the OS/session layer, not by an alternate shell
   implementation.

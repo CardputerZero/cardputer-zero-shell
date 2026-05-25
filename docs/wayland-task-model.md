@@ -77,15 +77,18 @@ Minimum task item data:
 - active/focused state,
 - minimized/background state when available.
 
-The current implementation uses:
+The production implementation uses `zero-window-agent`:
 
-```sh
-wlrctl toplevel list
-wlrctl toplevel focus ...
+```text
+labwc / wlroots foreign-toplevel protocol
+  -> zero-window-agent
+  -> /run/user/$UID/cardputer-zero/window-agent.sock
+  -> ZeroShell task UI
 ```
 
-A future implementation can replace this with a direct foreign-toplevel protocol
-client or a small OS-side window-state agent.
+`wlrctl` may be used only as a diagnostic command when debugging compositor
+state manually. It is not a production task-state source and must not be parsed
+by ZeroShell.
 
 ## Global Keys
 
@@ -114,6 +117,9 @@ long Esc
 - ZeroShell runs as the authenticated user.
 - App launch does not block the launcher event loop.
 - Running state comes from compositor toplevels.
+- Production task state and task actions go through `zero-window-agent`.
+- ZeroShell does not parse `wlrctl`, scan `/proc`, or infer tasks from child
+  processes.
 - `Tab` opens and closes the task list.
 - `Enter` on a running app focuses the existing task.
 - Short `Esc` minimizes the active app and returns to ZeroShell.
