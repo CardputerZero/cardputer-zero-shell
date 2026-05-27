@@ -65,6 +65,15 @@ constexpr Color kOk{0x3A, 0x7D, 0x44};
 constexpr Color kWarn{0xB9, 0x4A, 0x2C};
 constexpr Color kShadow{0xBD, 0xB5, 0xA4};
 
+enum class SoftKeyId {
+    None,
+    Task,
+    Left,
+    Right,
+    Enter,
+    Category,
+};
+
 struct Glyph {
     char ch;
     uint8_t rows[7];
@@ -380,6 +389,29 @@ uint16_t normalize_wayland_key(uint32_t key)
     return static_cast<uint16_t>(key);
 }
 
+SoftKeyId soft_key_for_key(uint16_t key)
+{
+    switch (key) {
+    case KEY_4:
+    case KEY_TAB:
+        return SoftKeyId::Task;
+    case KEY_5:
+    case KEY_LEFT:
+        return SoftKeyId::Left;
+    case KEY_6:
+    case KEY_RIGHT:
+        return SoftKeyId::Right;
+    case KEY_7:
+    case KEY_ENTER:
+        return SoftKeyId::Enter;
+    case KEY_8:
+    case KEY_C:
+        return SoftKeyId::Category;
+    default:
+        return SoftKeyId::None;
+    }
+}
+
 int hex_value(char ch)
 {
     if (ch >= '0' && ch <= '9') {
@@ -493,6 +525,7 @@ private:
     void process_commands();
     void update_launch_status();
     void set_status(std::string message, std::chrono::milliseconds duration);
+    void set_pressed_soft_key(SoftKeyId soft_key);
     void handle_key(uint16_t key);
     void focus_task(size_t task_index);
     void render();
@@ -532,6 +565,7 @@ private:
     bool keyboard_focused_ = false;
     bool task_view_ = false;
     bool category_view_ = false;
+    SoftKeyId pressed_soft_key_ = SoftKeyId::None;
     std::string status_message_;
     std::chrono::steady_clock::time_point status_until_{};
     std::FILE *debug_file_ = nullptr;
@@ -649,6 +683,7 @@ void WaylandShell::keyboard_leave(void *data, wl_keyboard *, uint32_t serial,
 {
     auto *self = static_cast<WaylandShell *>(data);
     self->keyboard_focused_ = false;
+    self->set_pressed_soft_key(SoftKeyId::None);
     if (self->debug_) {
         self->debug_log("keyboard leave serial=" + std::to_string(serial));
     }
@@ -665,10 +700,19 @@ void WaylandShell::keyboard_key(void *data, wl_keyboard *, uint32_t, uint32_t,
             " state=" + std::to_string(state) +
             " focused=" + (self->keyboard_focused_ ? "yes" : "no"));
     }
+    uint16_t normalized = normalize_wayland_key(key);
+    SoftKeyId soft_key = soft_key_for_key(normalized);
+    if (state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+        if (soft_key != SoftKeyId::None && self->pressed_soft_key_ == soft_key) {
+            self->set_pressed_soft_key(SoftKeyId::None);
+        }
+        return;
+    }
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED) {
         return;
     }
-    self->handle_key(normalize_wayland_key(key));
+    self->set_pressed_soft_key(soft_key);
+    self->handle_key(normalized);
 }
 
 void WaylandShell::buffer_release(void *data, wl_buffer *)
@@ -1052,17 +1096,7 @@ void WaylandShell::process_commands()
             command.pop_back();
         }
 
-        if (command == "show-tasks") {
-            task_view_ = true;
-            category_view_ = false;
-            dirty_ = true;
-        } else if (command == "toggle-tasks") {
-            task_view_ = !task_view_;
-            if (task_view_) {
-                category_view_ = false;
-            }
-            dirty_ = true;
-        } else if (command == "hide-tasks") {
+        if (command == "hide-tasks") {
             if (task_view_) {
                 task_view_ = false;
                 dirty_ = true;
@@ -1119,15 +1153,52 @@ void WaylandShell::set_status(std::string message, std::chrono::milliseconds dur
     dirty_ = true;
 }
 
+void WaylandShell::set_pressed_soft_key(SoftKeyId soft_key)
+{
+    if (pressed_soft_key_ != soft_key) {
+        pressed_soft_key_ = soft_key;
+        dirty_ = true;
+    }
+}
+
 void WaylandShell::handle_key(uint16_t key)
 {
     if (debug_) {
         debug_log("handle key=" + std::to_string(key));
     }
 
+    switch (key) {
+    case KEY_4:
+    case KEY_TAB:
+        task_view_ = !task_view_;
+        if (task_view_) {
+            category_view_ = false;
+        }
+        dirty_ = true;
+        return;
+    case KEY_8:
+    case KEY_C:
+        category_view_ = !category_view_;
+        if (category_view_) {
+            task_view_ = false;
+        }
+        dirty_ = true;
+        return;
+    case KEY_5:
+        key = KEY_LEFT;
+        break;
+    case KEY_6:
+        key = KEY_RIGHT;
+        break;
+    case KEY_7:
+        key = KEY_ENTER;
+        break;
+    default:
+        break;
+    }
+
     if (task_view_) {
         switch (key) {
-        case KEY_TAB:
         case KEY_ESC:
             task_view_ = false;
             dirty_ = true;
@@ -1158,7 +1229,6 @@ void WaylandShell::handle_key(uint16_t key)
 
     if (category_view_) {
         switch (key) {
-        case KEY_C:
         case KEY_ESC:
             category_view_ = false;
             dirty_ = true;
@@ -1246,16 +1316,6 @@ void WaylandShell::handle_key(uint16_t key)
                 set_status("NEEDS WAYLAND APP", std::chrono::seconds(2));
             }
         }
-        break;
-    case KEY_TAB:
-        task_view_ = !task_view_;
-        category_view_ = false;
-        dirty_ = true;
-        break;
-    case KEY_C:
-        task_view_ = false;
-        category_view_ = !category_view_;
-        dirty_ = true;
         break;
     case KEY_R:
         task_view_ = false;
@@ -1486,30 +1546,41 @@ void WaylandShell::draw_frame(uint32_t *pixels)
     fill_rect(pixels, 0, y, kWidth, kBarHeight, kPanel);
     draw_rect(pixels, 0, y, kWidth, kBarHeight, kLine);
 
-    fill_rect(pixels, 1, y + 1, 100, kBarHeight - 2, kTaskButton);
-    fill_rect(pixels, 6, y + 4, 24, 11, kIconWell);
-    draw_rect(pixels, 6, y + 4, 24, 11, kInk);
-    draw_text(pixels, 9, y + 6, "TAB", kAccent, 1);
-    draw_text(pixels, 36, y + 6, "TASK", kInk, 1);
-    fill_rect(pixels, 72, y + 4, 17, 11, kAccent);
-    draw_rect(pixels, 72, y + 4, 17, 11, kInk);
-    draw_text(pixels, 76, y + 6, std::to_string(tasks_.size()), kInk, 1);
+    struct SoftKey {
+        int x;
+        int w;
+        const char *label;
+        bool active;
+        SoftKeyId id;
+    };
+    const SoftKey keys[] = {
+        {0, 79, "TASK", task_view_, SoftKeyId::Task},
+        {79, 54, "<", false, SoftKeyId::Left},
+        {133, 54, ">", false, SoftKeyId::Right},
+        {187, 54, "ENTER", false, SoftKeyId::Enter},
+        {241, 79, "CATEGORY", category_view_, SoftKeyId::Category},
+    };
 
-    fill_rect(pixels, 102, y + 1, 90, kBarHeight - 2, kPanel);
-    fill_rect(pixels, 101, y, 1, kBarHeight, kLine);
-    fill_rect(pixels, 110, y + 4, 12, 11, kIconWell);
-    draw_rect(pixels, 110, y + 4, 12, 11, kInk);
-    draw_text(pixels, 114, y + 6, "C", kAccent, 1);
-    draw_text(pixels, 129, y + 6, "CATEGORY", kInk, 1);
-
-    fill_rect(pixels, 193, y + 1, 126, kBarHeight - 2, kPanel);
-    fill_rect(pixels, 192, y, 1, kBarHeight, kLine);
-    std::string category = category_selection_ < categories_.size() ? categories_[category_selection_] : "All";
-    category = category_label(category);
-    if (category.size() > 13) {
-        category.resize(13);
+    for (const SoftKey &soft_key : keys) {
+        bool pressed = pressed_soft_key_ == soft_key.id;
+        Color background = pressed ? kInk : (soft_key.active ? kTaskButton : kPanel);
+        Color foreground = pressed ? kPanel : (soft_key.active ? kAccent : kInk);
+        fill_rect(pixels, soft_key.x + 1, y + 1, soft_key.w - 1, kBarHeight - 2,
+                  background);
+        if (soft_key.x > 0) {
+            fill_rect(pixels, soft_key.x, y, 1, kBarHeight, kLine);
+        }
+        if (soft_key.id == SoftKeyId::Task) {
+            draw_text(pixels, soft_key.x + 8, y + 6, soft_key.label, foreground, 1);
+            int badge_x = soft_key.x + soft_key.w - 24;
+            fill_rect(pixels, badge_x, y + 4, 17, 11, pressed ? kPanel : kAccent);
+            draw_rect(pixels, badge_x, y + 4, 17, 11, pressed ? kPanel : kInk);
+            draw_text_centered(pixels, badge_x + 8, y + 6, std::to_string(tasks_.size()), kInk, 1);
+        } else {
+            draw_text_centered(pixels, soft_key.x + soft_key.w / 2, y + 6,
+                               soft_key.label, foreground, 1);
+        }
     }
-    draw_text(pixels, 205, y + 6, category, kAccent, 1);
 }
 
 void WaylandShell::draw_task_panel(uint32_t *pixels)

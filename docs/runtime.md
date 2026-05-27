@@ -79,11 +79,11 @@ explicit offline task backend state.
 Inside the labwc session:
 
 - ordinary keys go to the focused Wayland client,
-- `Tab` is bound by labwc to `zero-shell-control tasks`,
 - short/long `Esc` is handled by `zero-key-policy` from `cardputer-zero-os`.
 
-ZeroShell handles keys while it is focused, and reacts to the command file
-written by `zero-shell-control` when it is not focused.
+ZeroShell handles launcher soft keys, including `Tab`, only while it is focused.
+The command file is reserved for supported external shell commands such as
+reload or hiding shell-owned panels; it is not a global task-panel summons.
 
 ## Environment Variables
 

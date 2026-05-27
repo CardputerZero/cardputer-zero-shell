@@ -102,10 +102,10 @@ Enter on app
   -> wait for agent to report matching task
 ```
 
-Opening the task panel:
+Opening the task panel while ZeroShell is focused:
 
 ```text
-Tab
+4 or Tab
   -> show latest agent snapshot
 ```
 

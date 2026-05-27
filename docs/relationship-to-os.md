@@ -61,7 +61,7 @@ Shell expects:
   `/run/user/$UID/cardputer-zero/window-agent.sock` for task state and task
   control.
 
-Global `Tab` and `Esc` behavior is delivered through:
+Global `Esc` behavior is delivered through:
 
 ```text
 /usr/local/bin/zero-shell-control
@@ -69,3 +69,6 @@ Global `Tab` and `Esc` behavior is delivered through:
 
 `zero-shell-control` is also a client of `zero-window-agent`. It must not use
 `wlrctl` or process-tree guessing as a production fallback.
+
+`Tab` belongs to ZeroShell only while ZeroShell has keyboard focus. It is not a
+global task-panel shortcut while another app is focused.

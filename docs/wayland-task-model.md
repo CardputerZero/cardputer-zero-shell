@@ -92,14 +92,11 @@ by ZeroShell.
 
 ## Global Keys
 
-Global `Tab` and `Esc` policy belongs to `cardputer-zero-os`, because ordinary
-Wayland clients cannot observe global keys while another app has focus.
+Global `Esc` policy belongs to `cardputer-zero-os`, because ordinary Wayland
+clients cannot observe global keys while another app has focus. `Tab` belongs
+to ZeroShell only while ZeroShell has keyboard focus.
 
 ```text
-Tab
-  -> zero-shell-control tasks
-  -> ZeroShell toggles task UI
-
 short Esc
   -> zero-shell-control minimize-active
   -> labwc minimizes active window
@@ -120,7 +117,9 @@ long Esc
 - Production task state and task actions go through `zero-window-agent`.
 - ZeroShell does not parse `wlrctl`, scan `/proc`, or infer tasks from child
   processes.
-- `Tab` opens and closes the task list.
+- `4` opens and closes the task list while ZeroShell is focused.
+- `Tab` may also open and close the task list while ZeroShell is focused, but
+  it is not a global shortcut from another app.
 - `Enter` on a running app focuses the existing task.
 - Short `Esc` minimizes the active app and returns to ZeroShell.
 - Long `Esc` requests close on the active app and returns to ZeroShell.

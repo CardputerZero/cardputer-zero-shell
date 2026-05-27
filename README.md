@@ -46,7 +46,7 @@ minimize, close, stacking, and app windows belong to the compositor layer.
 - internal DRM/KMS display setup,
 - greetd/PAM/logind login,
 - labwc session startup,
-- global `Tab` and `Esc` input policy,
+- global `Esc` input policy,
 - polkit agent and privileged helper policy,
 - udev and group permissions,
 - HDMI/LightDM recovery policy.
@@ -82,13 +82,9 @@ greetd/PAM authenticates an existing Linux user
   -> ZeroShell shows running state from compositor toplevels
 ```
 
-Global task controls are mediated by `cardputer-zero-os`:
+Global app controls are mediated by `cardputer-zero-os`:
 
 ```text
-Tab
-  -> labwc keybind calls zero-shell-control tasks
-  -> ZeroShell toggles RUNNING TASKS
-
 short Esc
   -> zero-key-policy calls zero-shell-control minimize-active
   -> labwc minimizes the active toplevel
@@ -197,28 +193,30 @@ Home:
 
 | Key | Behavior |
 | --- | --- |
-| `Left` / `Right` | Select app. |
-| `Enter` | Launch selected app, or focus it if already running. |
-| `C` | Toggle category drawer and filter apps by `Categories=`. |
-| `Tab` | Toggle running task panel. |
+| `4` / `Tab` | Toggle running task panel. |
+| `5` / `Left` | Select previous app. |
+| `6` / `Right` | Select next app. |
+| `7` / `Enter` | Launch selected app, or focus it if already running. |
+| `8` / `C` | Toggle category drawer and filter apps by `Categories=`. |
 | `R` | Reload APPLaunch entries. |
 
 Category drawer:
 
 | Key | Behavior |
 | --- | --- |
-| `Up` / `Down` | Select category and immediately filter apps. |
-| `Left` / `Right` | Select category and immediately filter apps. |
-| `Enter` | Keep selected category and close the drawer. |
-| `C` / `Esc` | Hide category drawer. |
+| `5` / `Left` / `Up` | Select previous category and immediately filter apps. |
+| `6` / `Right` / `Down` | Select next category and immediately filter apps. |
+| `7` / `Enter` | Keep selected category and close the drawer. |
+| `8` / `C` / `Esc` | Hide category drawer. |
 
 Running task panel:
 
 | Key | Behavior |
 | --- | --- |
-| `Up` / `Down` | Select task. |
-| `Enter` | Focus selected task through labwc. |
-| `Tab` / `Esc` | Hide task panel. |
+| `5` / `Left` / `Up` | Select previous task. |
+| `6` / `Right` / `Down` | Select next task. |
+| `7` / `Enter` | Focus selected task through labwc. |
+| `4` / `Tab` / `Esc` | Hide task panel. |
 
 Global app policy:
 

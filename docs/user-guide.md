@@ -7,12 +7,22 @@ screen.
 
 The home screen shows the installed APPLaunch apps in a three-card carousel.
 
+The bottom bar is aligned to the physical `4` through `8` keys:
+
+| Soft key | Behavior |
+| --- | --- |
+| `4` / `TASK` | Toggle the running task panel. |
+| `5` / `<` | Move left. |
+| `6` / `>` | Move right. |
+| `7` / `ENTER` | Open or accept. |
+| `8` / `CATEGORY` | Toggle the category drawer. |
+
 | Key | Behavior |
 | --- | --- |
 | `Left` / `Right` | Select app. |
 | `Enter` | Open selected app, or focus it if already running. |
 | `C` | Toggle the category drawer. |
-| `Tab` | Toggle the running task panel. |
+| `Tab` | Toggle the running task panel while ZeroShell is focused. |
 | `R` | Reload app entries. |
 
 ## Categories
@@ -44,7 +54,7 @@ The task panel lists windows currently visible to the compositor.
 | --- | --- |
 | `Up` / `Down` | Select task. |
 | `Enter` | Focus selected task. |
-| `Tab` / `Esc` | Close the task panel. |
+| `Tab` / `Esc` | Close the task panel while ZeroShell is focused. |
 
 ## Global App Controls
 

@@ -59,7 +59,15 @@ The home screen contains:
 - 20 px top bar,
 - three-card carousel,
 - app name/status text,
-- 20 px bottom bar with task shortcut and controls.
+- 20 px bottom soft-key bar aligned to the physical `4` through `8` keys.
+
+The bottom soft-key bar shows five positional actions:
+
+- `TASK` above the wide `4` key,
+- `<` above `5`,
+- `>` above `6`,
+- `ENTER` above `7`,
+- `CATEGORY` above the wide `8` key.
 
 The task panel shows compositor-visible windows, excluding ZeroShell itself.
 
@@ -135,6 +143,8 @@ Production paths:
 - The compositor owns output and window management.
 - A task is a compositor toplevel/window.
 - A launcher category is a filter over desktop-entry `Categories=`.
+- `Tab` is a shell-focused shortcut only; it must not be used as a global task
+  panel summons while another app has focus.
 - `zero-window-agent` is the only production task-state and task-action
   backend.
 - ZeroShell must not invoke or parse `wlrctl`.
